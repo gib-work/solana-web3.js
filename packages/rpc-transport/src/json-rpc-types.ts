@@ -26,7 +26,7 @@ export type RpcSubscriptionConfig<TRpcMethods> = Readonly<{
 export type RpcRequest<TResponse> = {
     methodName: string;
     params: unknown[];
-    responseProcessor?: (response: unknown) => TResponse;
+    responseProcessor?: (response: unknown, methodName: string) => TResponse;
 };
 export type RpcSubscription<TResponse> = {
     params: unknown[];
