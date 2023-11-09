@@ -1,9 +1,26 @@
+import { Address } from '@solana/addresses';
 import { SolanaRpcMethods } from '@solana/rpc-core';
-import { Rpc } from '@solana/rpc-transport/dist/types/json-rpc-types';
 import { GraphQLResolveInfo } from 'graphql';
 
 import { GraphQLCache } from '../cache';
+import type { Rpc } from '../context';
 import { AccountQueryArgs } from '../schema/account';
+
+function onlyAddressRequested(info?: GraphQLResolveInfo): boolean {
+    if (info && info.fieldNodes[0].selectionSet) {
+        const selectionSet = info.fieldNodes[0].selectionSet;
+        const requestedFields = selectionSet.selections.map(field => {
+            if (field.kind === 'Field') {
+                return field.name.value;
+            }
+            return null;
+        });
+        if (requestedFields && requestedFields.length === 1 && requestedFields[0] === 'address') {
+            return true;
+        }
+    }
+    return false;
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function refineJsonParsedAccountData(jsonParsedData: any) {
@@ -16,25 +33,41 @@ export function refineJsonParsedAccountData(jsonParsedData: any) {
     return { data, meta };
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function processQueryResponse({ address, account, encoding }: { address: Address; account: any; encoding: string }) {
+    const [refinedData, responseEncoding] = Array.isArray(account.data)
+        ? encoding === 'jsonParsed'
+            ? [account.data[0], 'base64']
+            : [account.data[0], encoding]
+        : [refineJsonParsedAccountData(account.data), 'jsonParsed'];
+
+    const responseBase = {
+        ...account,
+        address,
+        encoding: responseEncoding,
+    };
+    return typeof refinedData === 'object' && 'meta' in refinedData
+        ? {
+              ...responseBase,
+              data: refinedData.data,
+              meta: refinedData.meta,
+          }
+        : {
+              ...responseBase,
+              data: refinedData,
+          };
+}
+
 // Default to jsonParsed encoding if none is provided
 export async function resolveAccount(
     { address, encoding = 'jsonParsed', ...config }: AccountQueryArgs,
     cache: GraphQLCache,
-    rpc: Rpc<SolanaRpcMethods>,
+    rpc: Rpc,
     info?: GraphQLResolveInfo
 ) {
     // If a user only requests the account's address, don't call the RPC
-    if (info && info.fieldNodes[0].selectionSet) {
-        const selectionSet = info.fieldNodes[0].selectionSet;
-        const requestedFields = selectionSet.selections.map(field => {
-            if (field.kind === 'Field') {
-                return field.name.value;
-            }
-            return null;
-        });
-        if (requestedFields && requestedFields.length === 1 && requestedFields[0] === 'address') {
-            return { address };
-        }
+    if (onlyAddressRequested(info)) {
+        return { address };
     }
 
     const requestConfig = { encoding, ...config };
@@ -53,35 +86,11 @@ export async function resolveAccount(
         });
 
     if (account === null) {
-        // Account does not exist
-        // Return only the address
-        return {
-            address,
-        };
+        // Account does not exist, return only the address
+        return { address };
     }
 
-    const [refinedData, responseEncoding] = Array.isArray(account.data)
-        ? encoding === 'jsonParsed'
-            ? [account.data[0], 'base64']
-            : [account.data[0], encoding]
-        : [refineJsonParsedAccountData(account.data), 'jsonParsed'];
-
-    const responseBase = {
-        ...account,
-        address,
-        encoding: responseEncoding,
-    };
-    const queryResponse =
-        typeof refinedData === 'object' && 'meta' in refinedData
-            ? {
-                  ...responseBase,
-                  data: refinedData.data,
-                  meta: refinedData.meta,
-              }
-            : {
-                  ...responseBase,
-                  data: refinedData,
-              };
+    const queryResponse = processQueryResponse({ account, address, encoding });
 
     cache.insert(address, requestConfig, queryResponse);
 

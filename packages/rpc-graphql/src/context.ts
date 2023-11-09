@@ -1,5 +1,3 @@
-import { SolanaRpcMethods } from '@solana/rpc-core';
-import { Rpc } from '@solana/rpc-transport/dist/types/json-rpc-types';
 import { GraphQLResolveInfo } from 'graphql';
 
 import { createGraphQLCache, GraphQLCache } from './cache';
@@ -7,10 +5,13 @@ import { resolveAccount } from './resolvers/account';
 import { resolveBlock } from './resolvers/block';
 import { resolveProgramAccounts } from './resolvers/program-accounts';
 import { resolveTransaction } from './resolvers/transaction';
-import { AccountQueryArgs } from './schema/account/query';
+import { createRpcGraphQL } from './rpc';
+import { AccountQueryArgs } from './schema/account';
 import { BlockQueryArgs } from './schema/block';
 import { ProgramAccountsQueryArgs } from './schema/program-accounts';
-import { TransactionQueryArgs } from './schema/transaction/query';
+import { TransactionQueryArgs } from './schema/transaction';
+
+export type Rpc = Parameters<typeof createRpcGraphQL>[0];
 
 export interface RpcGraphQLContext {
     cache: GraphQLCache;
@@ -18,10 +19,10 @@ export interface RpcGraphQLContext {
     resolveBlock(args: BlockQueryArgs): ReturnType<typeof resolveBlock>;
     resolveProgramAccounts(args: ProgramAccountsQueryArgs): ReturnType<typeof resolveProgramAccounts>;
     resolveTransaction(args: TransactionQueryArgs): ReturnType<typeof resolveTransaction>;
-    rpc: Rpc<SolanaRpcMethods>;
+    rpc: Rpc;
 }
 
-export function createSolanaGraphQLContext(rpc: Rpc<SolanaRpcMethods>): RpcGraphQLContext {
+export function createSolanaGraphQLContext(rpc: Rpc): RpcGraphQLContext {
     const cache = createGraphQLCache();
     return {
         cache,
